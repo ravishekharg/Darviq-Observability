@@ -1,7 +1,11 @@
 # Darviq-Observability: the whole monitoring stack as code.
 #
-#   docker compose up -d        Grafana http://localhost:3000 (admin / see GRAFANA_ADMIN_PASSWORD)
-#                               Prometheus http://localhost:9091, Alertmanager http://localhost:9094
+#   docker compose up -d                      Prometheus, Alertmanager, Grafana, Loki and exporters
+#   docker compose --profile zabbix up -d     ...plus Zabbix (server, web UI, agent 2)
+#   docker compose --profile datadog up -d    ...plus the Datadog agent (needs DD_API_KEY)
+#
+#   Grafana http://localhost:3000, Prometheus :9091, Alertmanager :9094, Loki :3100,
+#   Zabbix http://localhost:8081, on-call page http://localhost:9099
 #
 # Ports are offset from the defaults (9091, 9094) so this stack can run next to an application's
 # own Prometheus (Darviq-Buzz ships one on 9090/9093). Applications are reached through the host
@@ -72,6 +76,105 @@ services:
     restart: unless-stopped
     volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
 
+  # ---- logs: Loki stores them, Alloy collects every container's output -----------------------
+  loki:
+    image: grafana/loki:3.2.1
+    restart: unless-stopped
+    command: [-config.file=/etc/loki/loki.yml]
+    ports: ["3100:3100"]
+    volumes:
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
+      - ./loki/rules:/etc/loki/rules:ro
+      - loki_data:/loki
+
+  alloy:
+    image: grafana/alloy:v1.4.3
+    restart: unless-stopped
+    command: [run, /etc/alloy/config.alloy, --storage.path=/var/lib/alloy/data]
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  # ---- Zabbix (profile "zabbix"): agent-based monitoring with its own UI, templates and actions.
+  # zabbix/provision.py configures it through the Zabbix API after the first start.
+  zabbix-db:
+    profiles: [zabbix]
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: ${ZABBIX_DB_PASSWORD:-zabbix-local}
+      POSTGRES_DB: zabbix
+    volumes: [zabbix_db:/var/lib/postgresql/data]
+
+  zabbix-server:
+    profiles: [zabbix]
+    image: zabbix/zabbix-server-pgsql:alpine-7.0-latest
+    restart: unless-stopped
+    environment:
+      DB_SERVER_HOST: zabbix-db
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: ${ZABBIX_DB_PASSWORD:-zabbix-local}
+      POSTGRES_DB: zabbix
+      ZBX_STARTHTTPPOLLERS: "5"
+    depends_on: [zabbix-db]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+
+  zabbix-web:
+    profiles: [zabbix]
+    image: zabbix/zabbix-web-nginx-pgsql:alpine-7.0-latest
+    restart: unless-stopped
+    ports: ["8081:8080"]
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      DB_SERVER_HOST: zabbix-db
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: ${ZABBIX_DB_PASSWORD:-zabbix-local}
+      POSTGRES_DB: zabbix
+      PHP_TZ: Asia/Kolkata
+    depends_on: [zabbix-server]
+
+  # Agent 2 on the Docker host: system metrics plus every container through the Docker socket.
+  zabbix-agent2:
+    profiles: [zabbix]
+    image: zabbix/zabbix-agent2:alpine-7.0-latest
+    restart: unless-stopped
+    user: root                       # to read the Docker socket
+    pid: host
+    privileged: true
+    environment:
+      ZBX_HOSTNAME: docker-host
+      ZBX_SERVER_HOST: zabbix-server
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /:/rootfs:ro
+
+  # ---- Datadog (profile "datadog"): the same workloads in Datadog's SaaS. Needs an API key from
+  # a Datadog account (the free plan works): DD_API_KEY=... docker compose --profile datadog up -d
+  datadog-agent:
+    profiles: [datadog]
+    image: gcr.io/datadoghq/agent:7
+    restart: unless-stopped
+    pid: host
+    environment:
+      DD_API_KEY: ${DD_API_KEY:-}     # required for this profile; empty keeps the other profiles working
+      DD_SITE: ${DD_SITE:-datadoghq.com}
+      DD_HOSTNAME: ${DD_HOSTNAME:-darviq-docker-host}
+      DD_TAGS: "env:local team:darviq"
+      DD_LOGS_ENABLED: "true"
+      DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL: "true"
+      DD_PROCESS_AGENT_ENABLED: "true"
+      DD_CONTAINER_EXCLUDE_LOGS: "name:datadog-agent"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
+      - ./datadog/conf.d/openmetrics.d:/conf.d/openmetrics.d:ro
+      - ./datadog/conf.d/http_check.d:/conf.d/http_check.d:ro
+    extra_hosts: ["host.docker.internal:host-gateway"]
+
 volumes:
   prometheus_data:
   grafana_data:
+  loki_data:
+  zabbix_db:

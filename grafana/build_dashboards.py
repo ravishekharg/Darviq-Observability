@@ -11,6 +11,7 @@ from pathlib import Path
 
 OUT = Path(__file__).resolve().parent / "dashboards"
 DS = {"type": "prometheus", "uid": "prometheus"}
+LOKI = {"type": "loki", "uid": "loki"}
 GREEN, AMBER, RED, BLUE = "#3fb27f", "#e0a526", "#e05252", "#5b8def"
 
 
@@ -245,9 +246,61 @@ def hosts():
                      panels, tags=("infrastructure",))
 
 
+def loki_ts(layout, title, queries, w=12, h=8, stack=True, unit="short", desc=""):
+    panel = timeseries(layout, title, [], unit=unit, w=w, h=h, stack=stack, desc=desc)
+    panel["datasource"] = LOKI
+    panel["targets"] = [{"datasource": LOKI, "expr": q, "legendFormat": legend, "refId": chr(65 + i),
+                         "queryType": "range"} for i, (q, legend) in enumerate(queries)]
+    panel["fieldConfig"]["defaults"]["custom"]["drawStyle"] = "bars"
+    panel["fieldConfig"]["defaults"]["custom"]["fillOpacity"] = 80
+    return panel
+
+
+def logs():
+    L = Layout()
+    sel = '{project=~"$project", service=~"$service"}'
+    lvl = '| detected_level=~"$level"'
+    loki_stat = lambda title, expr, steps, unit="short": {
+        **stat(L, title, "", unit=unit, w=8, steps=steps), "datasource": LOKI,
+        "targets": [{"datasource": LOKI, "expr": expr, "refId": "A", "queryType": "instant"}]}
+    panels = [
+        loki_stat("Log lines (last 5 min)", f"sum(count_over_time({sel} [5m]))", ((None, BLUE),)),
+        loki_stat("Errors (last 5 min)", f'sum(count_over_time({sel} | detected_level=~"error|critical|fatal" [5m])) or vector(0)',
+                  ((None, GREEN), (1, AMBER), (20, RED))),
+        loki_stat("Services logging", f"count(sum by (service) (count_over_time({sel} [5m])))", ((None, BLUE),)),
+        loki_ts(L, "Log volume by service", [(f"sum by (service) (count_over_time({sel} {lvl} [$__auto]))", "{{service}}")]),
+        # lines Loki couldn't classify get level "unknown" instead of an unnamed series
+        loki_ts(L, "Log volume by level", [(
+            f'sum by (level) (count_over_time({sel} | label_format level=`{{{{ if .detected_level }}}}{{{{ .detected_level }}}}{{{{ else }}}}unknown{{{{ end }}}}` [$__auto]))',
+            "{{level}}")]),
+    ]
+    pos, pid = L.place(24, 14)
+    panels.append({"type": "logs", "id": pid, "title": "Logs", "gridPos": pos, "datasource": LOKI,
+                   "targets": [{"datasource": LOKI, "refId": "A", "queryType": "range",
+                                "expr": f'{sel} {lvl} |~ "(?i)$search"'}],
+                   "options": {"showTime": True, "wrapLogMessage": True, "sortOrder": "Descending",
+                               "enableLogDetails": True, "dedupStrategy": "none", "prettifyLogMessage": False}})
+    loki_var = lambda name, label, q: {
+        "name": name, "label": label, "type": "query", "datasource": LOKI,
+        "query": {"label": q, "refId": name, "stream": "", "type": 1}, "definition": q,
+        "includeAll": True, "multi": True, "allValue": ".+", "current": {"text": "All", "value": "$__all"},
+        "refresh": 2, "sort": 1}
+    templating = [
+        loki_var("project", "Project", "project"),
+        loki_var("service", "Service", "service"),
+        {"name": "level", "label": "Level", "type": "custom", "query": "error,critical,warn,info,debug,unknown",
+         "includeAll": True, "multi": True, "allValue": ".*", "current": {"text": "All", "value": "$__all"},
+         "options": []},
+        {"name": "search", "label": "Search", "type": "textbox", "query": "", "current": {"text": "", "value": ""}},
+    ]
+    return dashboard("logs", "Logs",
+                     "Every container's logs from Loki, filterable by project, service, level and text.",
+                     panels, templating=templating, tags=("logs",))
+
+
 if __name__ == "__main__":
     OUT.mkdir(exist_ok=True)
-    for board, name in ((platform_overview(), "platform-overview"), (uptime(), "uptime"), (hosts(), "hosts")):
+    for board, name in ((platform_overview(), "platform-overview"), (uptime(), "uptime"), (hosts(), "hosts"), (logs(), "logs")):
         with open(OUT / f"{name}.json", "w", encoding="utf-8", newline="\n") as f:  # same bytes on every OS
             f.write(json.dumps(board, indent=2) + "\n")
         print(f"wrote dashboards/{name}.json ({len(board['panels'])} panels)")

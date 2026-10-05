@@ -43,6 +43,27 @@ tests:
               description: "The synthetic HTTP check of https://darviq.com/ (darviq-website) has failed for 2 minutes."
               runbook: docs/runbooks.md#probefailed
 
+  - name: a slow page warns, but a failing page that is slow does not (ProbeFailed covers it)
+    interval: 30s
+    input_series:
+      - series: 'probe_duration_seconds{instance="https://slow.example/"}'
+        values: "3+0x30"
+      - series: 'probe_success{instance="https://slow.example/"}'
+        values: "1+0x30"
+      - series: 'probe_duration_seconds{instance="https://down.example/"}'
+        values: "3+0x30"
+      - series: 'probe_success{instance="https://down.example/"}'
+        values: "0+0x30"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: SlowResponse
+        exp_alerts:
+          - exp_labels: {severity: warning, instance: "https://slow.example/"}
+            exp_annotations:
+              summary: "https://slow.example/ takes 3s to respond"
+              description: "Synthetic checks of https://slow.example/ have averaged over 2 s for 5 minutes."
+              runbook: docs/runbooks.md#slowresponse
+
   - name: a certificate with 10 days left warns; one with 60 days does not
     interval: 1m
     input_series:

@@ -1,0 +1,10 @@
+[
+  {
+    "targets": [
+      "host.docker.internal:4000", "host.docker.internal:4001", "host.docker.internal:4002",
+      "host.docker.internal:4003", "host.docker.internal:4004", "host.docker.internal:4005",
+      "host.docker.internal:4006"
+    ],
+    "labels": {"product": "darviq-nyaya", "env": "local"}
+  }
+]

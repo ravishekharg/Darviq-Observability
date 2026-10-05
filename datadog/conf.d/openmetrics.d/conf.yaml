@@ -1,0 +1,130 @@
+# Scrapes the same Prometheus endpoints as Prometheus does, so Datadog sees identical
+# request, error and latency metrics (as darviq.http.requests.count etc., tagged by service).
+init_config:
+
+instances:
+  - openmetrics_endpoint: http://host.docker.internal:5000/metrics
+    namespace: darviq
+    metrics:
+      - http_requests: http.requests
+      - http_request_duration_seconds: http.request.duration
+    tags: ["product:darviq-buzz"]
+
+  - openmetrics_endpoint: http://host.docker.internal:5001/metrics
+    namespace: darviq
+    metrics:
+      - http_requests: http.requests
+      - http_request_duration_seconds: http.request.duration
+    tags: ["product:darviq-buzz"]
+
+  - openmetrics_endpoint: http://host.docker.internal:5002/metrics
+    namespace: darviq
+    metrics:
+      - http_requests: http.requests
+      - http_request_duration_seconds: http.request.duration
+    tags: ["product:darviq-buzz"]
+
+  - openmetrics_endpoint: http://host.docker.internal:5003/metrics
+    namespace: darviq
+    metrics:
+      - http_requests: http.requests
+      - http_request_duration_seconds: http.request.duration
+    tags: ["product:darviq-buzz"]
+
+  - openmetrics_endpoint: http://host.docker.internal:5004/metrics
+    namespace: darviq
+    metrics:
+      - http_requests: http.requests
+      - http_request_duration_seconds: http.request.duration
+    tags: ["product:darviq-buzz"]
+
+  - openmetrics_endpoint: http://host.docker.internal:5005/metrics
+    namespace: darviq
+    metrics:
+      - http_requests: http.requests
+      - http_request_duration_seconds: http.request.duration
+    tags: ["product:darviq-buzz"]
+
+  - openmetrics_endpoint: http://host.docker.internal:5006/metrics
+    namespace: darviq
+    metrics:
+      - http_requests: http.requests
+      - http_request_duration_seconds: http.request.duration
+    tags: ["product:darviq-buzz"]
+
+  - openmetrics_endpoint: http://host.docker.internal:5007/metrics
+    namespace: darviq
+    metrics:
+      - http_requests: http.requests
+      - http_request_duration_seconds: http.request.duration
+    tags: ["product:darviq-buzz"]
+
+  - openmetrics_endpoint: http://host.docker.internal:5008/metrics
+    namespace: darviq
+    metrics:
+      - http_requests: http.requests
+      - http_request_duration_seconds: http.request.duration
+    tags: ["product:darviq-buzz"]
+
+  - openmetrics_endpoint: http://host.docker.internal:5009/metrics
+    namespace: darviq
+    metrics:
+      - http_requests: http.requests
+      - http_request_duration_seconds: http.request.duration
+    tags: ["product:darviq-buzz"]
+
+  - openmetrics_endpoint: http://host.docker.internal:8000/metrics
+    namespace: darviq
+    metrics:
+      - http_requests: http.requests
+      - http_request_duration_seconds: http.request.duration
+    tags: ["product:darviq-buzz"]
+
+  - openmetrics_endpoint: http://host.docker.internal:4000/metrics
+    namespace: darviq
+    metrics:
+      - http_requests: http.requests
+      - http_request_duration_seconds: http.request.duration
+    tags: ["product:darviq-nyaya"]
+
+  - openmetrics_endpoint: http://host.docker.internal:4001/metrics
+    namespace: darviq
+    metrics:
+      - http_requests: http.requests
+      - http_request_duration_seconds: http.request.duration
+    tags: ["product:darviq-nyaya"]
+
+  - openmetrics_endpoint: http://host.docker.internal:4002/metrics
+    namespace: darviq
+    metrics:
+      - http_requests: http.requests
+      - http_request_duration_seconds: http.request.duration
+    tags: ["product:darviq-nyaya"]
+
+  - openmetrics_endpoint: http://host.docker.internal:4003/metrics
+    namespace: darviq
+    metrics:
+      - http_requests: http.requests
+      - http_request_duration_seconds: http.request.duration
+    tags: ["product:darviq-nyaya"]
+
+  - openmetrics_endpoint: http://host.docker.internal:4004/metrics
+    namespace: darviq
+    metrics:
+      - http_requests: http.requests
+      - http_request_duration_seconds: http.request.duration
+    tags: ["product:darviq-nyaya"]
+
+  - openmetrics_endpoint: http://host.docker.internal:4005/metrics
+    namespace: darviq
+    metrics:
+      - http_requests: http.requests
+      - http_request_duration_seconds: http.request.duration
+    tags: ["product:darviq-nyaya"]
+
+  - openmetrics_endpoint: http://host.docker.internal:4006/metrics
+    namespace: darviq
+    metrics:
+      - http_requests: http.requests
+      - http_request_duration_seconds: http.request.duration
+    tags: ["product:darviq-nyaya"]

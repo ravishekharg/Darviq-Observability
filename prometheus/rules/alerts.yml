@@ -22,8 +22,11 @@ groups:
           description: "The synthetic HTTP check of {{ $labels.instance }} ({{ $labels.product }}) has failed for 2 minutes."
           runbook: docs/runbooks.md#probefailed
 
+      # Only while every check in the window succeeded: a failing check is often slow too (a proxy
+      # waiting for a dead upstream), and ProbeFailed already covers it. Found in a drill where both
+      # fired for one outage.
       - alert: SlowResponse
-        expr: avg_over_time(probe_duration_seconds[5m]) > 2
+        expr: avg_over_time(probe_duration_seconds[5m]) > 2 and min_over_time(probe_success[5m]) == 1
         for: 5m
         labels: {severity: warning}
         annotations:

@@ -1,0 +1,24 @@
+# Alerts on log content, evaluated by Loki's ruler and sent to Alertmanager. ("fake" is Loki's
+# tenant name when multi-tenancy is off.)
+# Loki's own logs are excluded: Loki logs every rule evaluation, query text included, so a rule
+# searching for "traceback" found that word in Loki's log of the rule itself and fired on itself.
+groups:
+  - name: logs
+    rules:
+      - alert: ErrorLogSpike
+        expr: |
+          sum by (project, service) (count_over_time({project=~".+", service!="loki"} | detected_level=~"error|critical|fatal" [5m])) > 20
+        for: 5m
+        labels: {severity: warning, source: loki}
+        annotations:
+          summary: "{{ $labels.service }} ({{ $labels.project }}) logged {{ $value }} errors in 5 minutes"
+          runbook: docs/runbooks.md#errorlogspike
+
+      - alert: CrashLoopInLogs
+        expr: |
+          sum by (project, service) (count_over_time({project=~".+", service!="loki"} |~ `(?i)traceback \(most recent call last\)|unhandled exception|panic:` [10m])) > 3
+        for: 0m
+        labels: {severity: critical, source: loki}
+        annotations:
+          summary: "{{ $labels.service }} ({{ $labels.project }}) logged {{ $value }} crashes in 10 minutes"
+          runbook: docs/runbooks.md#crashloopinlogs

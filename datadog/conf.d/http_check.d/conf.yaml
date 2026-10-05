@@ -1,0 +1,9 @@
+# The agent's own HTTP checks, from inside the network (Datadog Synthetics in terraform/ checks
+# darviq.com from outside). Each reports http.can_connect and network.http.response_time.
+init_config:
+
+instances:
+  - {name: darviq.com home, url: "https://darviq.com/", check_certificate_expiration: true, days_warning: 14, days_critical: 7, tags: ["product:darviq-website"]}
+  - {name: Darviq Health API, url: "http://host.docker.internal:8090/api/health", tags: ["product:darviq-health"]}
+  - {name: Darviq Nyaya API, url: "http://host.docker.internal:8080/api/health", tags: ["product:darviq-nyaya"]}
+  - {name: Darviq Buzz web, url: "http://host.docker.internal:8000/health", tags: ["product:darviq-buzz"]}

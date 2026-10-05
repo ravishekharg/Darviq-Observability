@@ -94,6 +94,22 @@ Deliberate stops, starts and redeploys don't trigger it.
 1. `docker compose logs --tail 200 <name>`: the crash just before the restart.
 2. Often a dependency wasn't ready at startup (database, broker): check health-check timings.
 
+## ErrorLogSpike
+
+**Means:** a service has logged more than 20 error-level lines in 5 minutes (from Loki).
+
+1. Grafana → **Logs** → filter to the service and level `error`: one repeated error, or many kinds?
+2. One repeated error usually has a single cause (a dependency down, bad config after a deploy):
+   match its first occurrence to the deploy or incident timeline.
+
+## CrashLoopInLogs
+
+**Means:** a service has logged several stack traces or unhandled exceptions in 10 minutes.
+
+1. Grafana → **Logs**, search `Traceback` or `exception` for the service: the first stack trace
+   is the useful one.
+2. Check **ContainerRestarting** and the service's error ratio: is it actually failing requests?
+
 ## Watchdog
 
 **Means:** nothing is wrong. It always fires, so the on-call side receives a heartbeat. If the

@@ -24,4 +24,11 @@ done
 echo "== Dashboards are up to date with build_dashboards.py"
 python grafana/build_dashboards.py >/dev/null
 git diff --quiet -- grafana/dashboards || { echo "dashboards changed: commit the regenerated JSON"; exit 1; }
+echo "== Loki config"
+docker run --rm -v "$ROOT/loki:/l" grafana/loki:3.2.1 -config.file=/l/loki.yml -verify-config >/dev/null && echo "  valid"
+echo "== Python (provisioning, receiver, exporter) compiles"
+python -m py_compile zabbix/provision.py alert-receiver/receiver.py docker-exporter/exporter.py grafana/build_dashboards.py && echo "  ok"
+echo "== Datadog Terraform"
+TF="docker run --rm -v $ROOT/datadog/terraform:/tf -w /tf hashicorp/terraform:1.9"
+$TF fmt -check && $TF init -backend=false -input=false >/dev/null && $TF validate
 echo "All checks passed."
