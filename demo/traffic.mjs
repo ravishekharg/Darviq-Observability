@@ -5,7 +5,7 @@
 //
 //   node demo/traffic.mjs [minutes=15] [base=http://localhost:8000]
 //
-// Uses the sample accounts from the Buzz seeding script (password Sample-Pass1!).
+// Uses the invented sample accounts created by demo/seed-buzz.mjs (run that once first).
 
 const MINUTES = Number(process.argv[2] ?? 15);
 const BASE = process.argv[3] ?? "http://localhost:8000";

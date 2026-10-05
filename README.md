@@ -82,6 +82,7 @@ Datadog's monitors, synthetics and dashboard: `cd datadog/terraform && terraform
 with `TF_VAR_datadog_api_key` and `TF_VAR_datadog_app_key` set. Datadog's free plan covers host
 and container metrics; log management and synthetic tests are paid features.
 
+`node demo/seed-buzz.mjs` creates invented sample accounts and posts in a fresh Buzz, then
 `node demo/traffic.mjs 15` sends 15 minutes of realistic browsing traffic to Darviq-Buzz so the
 dashboards have something to show on a laptop: real requests through the real stack, nothing
 written into the metrics directly.
@@ -141,3 +142,8 @@ Amazon Managed Service for Prometheus with Amazon Managed Grafana, Grafana Cloud
 | ![Zabbix dashboard](docs/screenshots/zabbix-dashboard.jpg) | ![Zabbix problems](docs/screenshots/zabbix-problems.jpg) |
 | ![Uptime](docs/screenshots/uptime.jpg) | ![Hosts and containers](docs/screenshots/hosts.jpg) |
 | ![Alertmanager](docs/screenshots/alertmanager.jpg) | ![On-call notifications](docs/screenshots/oncall.jpg) |
+
+## Licence
+
+Copyright (c) 2026 Darviq Systems. All rights reserved. Published for viewing and evaluation; see
+[LICENSE](LICENSE). For licensing or a custom build, contact hello@darviq.com.
