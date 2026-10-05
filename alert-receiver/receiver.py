@@ -11,6 +11,9 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 RECENT = deque(maxlen=50)
+# Alertmanager re-sends a group's full alert list on every change, so the same alert arrives again
+# and again with an unchanged status. Only record an alert when its status actually changes.
+LAST_STATUS = {}
 COLORS = {"critical": "#d64545", "warning": "#d99a1e", "none": "#6b7280"}
 
 
@@ -22,6 +25,10 @@ class Handler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
         received = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         for alert in body.get("alerts", []):
+            key = alert.get("fingerprint") or json.dumps(alert.get("labels", {}), sort_keys=True)
+            if LAST_STATUS.get(key) == alert.get("status"):
+                continue
+            LAST_STATUS[key] = alert.get("status")
             entry = {
                 "received": received,
                 "status": alert.get("status"),

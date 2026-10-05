@@ -52,7 +52,7 @@ def stat(layout, title, query, unit="none", steps=((None, GREEN),), w=4, h=4, de
                         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False}}}
 
 
-def timeseries(layout, title, queries, unit="short", w=12, h=8, steps=None, stack=False, desc="", fill=12):
+def timeseries(layout, title, queries, unit="short", w=12, h=8, steps=None, stack=False, desc="", fill=12, no_value=None):
     pos, pid = layout.place(w, h)
     defaults = {"unit": unit, "color": {"mode": "palette-classic"},
                 "custom": {"lineWidth": 2, "fillOpacity": fill, "gradientMode": "opacity", "showPoints": "never",
@@ -60,6 +60,8 @@ def timeseries(layout, title, queries, unit="short", w=12, h=8, steps=None, stac
                            "thresholdsStyle": {"mode": "line+area" if steps else "off"}}}
     if steps:
         defaults["thresholds"] = thresholds(*steps)
+    if no_value:
+        defaults["noValue"] = no_value
     return {"type": "timeseries", "id": pid, "title": title, "description": desc, "gridPos": pos, "datasource": DS,
             "targets": targets(*queries), "fieldConfig": {"defaults": defaults, "overrides": []},
             "options": {"legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"]},
@@ -225,7 +227,8 @@ def hosts():
         timeseries(L, "Hours until full at the current rate", [
             (by_disk(f"(node_filesystem_avail_bytes{{{fs}}} / clamp_min(-deriv(node_filesystem_avail_bytes{{{fs}}}[6h]), 1e-9)) / 3600 < 24 * 30"),
              "{{device}}")], unit="h", fill=0, steps=((None, RED), (24, AMBER), (72, "transparent")),
-            desc="Only filesystems that are filling and would be full within 30 days. DiskWillFillIn24h fires below 24 h."),
+            desc="Only filesystems that are filling and would be full within 30 days. DiskWillFillIn24h fires below 24 h.",
+            no_value="No disk is filling up"),
         timeseries(L, "Container CPU (top 10)", [
             ('topk(10, sum by (name) (rate(container_cpu_usage_seconds_total{name!=""}[5m])))', "{{name}}")],
             unit="percentunit", fill=0),

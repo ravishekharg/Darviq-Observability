@@ -88,7 +88,8 @@ killing processes.
 
 ## ContainerRestarting
 
-**Means:** a container has restarted in the last 15 minutes.
+**Means:** a container crashed and Docker's restart policy restarted it in the last 15 minutes.
+Deliberate stops, starts and redeploys don't trigger it.
 
 1. `docker compose logs --tail 200 <name>`: the crash just before the restart.
 2. Often a dependency wasn't ready at startup (database, broker): check health-check timings.

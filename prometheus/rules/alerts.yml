@@ -107,12 +107,14 @@ groups:
           summary: "{{ $labels.instance }} is using {{ $value | humanizePercentage }} of its memory"
           runbook: docs/runbooks.md#memorypressure
 
+      # Restarts by Docker's restart policy, i.e. after a crash. A deliberate stop/start or redeploy
+      # doesn't count: an earlier version keyed on the start time and paged on every deploy.
       - alert: ContainerRestarting
-        expr: changes(container_start_time_seconds{name!=""}[15m]) > 0   # a restart moves the start time
+        expr: delta(container_restart_count{name!=""}[15m]) > 0
         for: 0m
         labels: {severity: warning}
         annotations:
-          summary: "Container {{ $labels.name }} restarted in the last 15 minutes"
+          summary: "Container {{ $labels.name }} crashed and was restarted in the last 15 minutes"
           runbook: docs/runbooks.md#containerrestarting
 
   - name: monitoring
