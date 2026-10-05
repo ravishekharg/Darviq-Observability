@@ -1,0 +1,6 @@
+[
+  {
+    "targets": ["http://host.docker.internal:8000/health", "http://host.docker.internal:5000/api/health"],
+    "labels": {"product": "darviq-buzz", "env": "local"}
+  }
+]

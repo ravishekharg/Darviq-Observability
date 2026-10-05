@@ -1,0 +1,29 @@
+# Pre-computed series the dashboards and alerts share, so "error ratio" or "p95 latency" means
+# exactly the same thing on a panel as in the alert that pages someone.
+groups:
+  - name: service-recording
+    rules:
+      - record: service:http_requests:rate5m
+        expr: sum by (product, service) (rate(http_requests_total[5m]))
+
+      - record: service:http_errors:rate5m
+        expr: sum by (product, service) (rate(http_requests_total{status=~"5.."}[5m]))
+
+      - record: service:http_error_ratio:rate5m
+        expr: service:http_errors:rate5m / clamp_min(service:http_requests:rate5m, 1e-9)
+
+      - record: service:http_latency_p95:5m
+        expr: histogram_quantile(0.95, sum by (product, service, le) (rate(http_request_duration_seconds_bucket[5m])))
+
+  - name: host-recording
+    rules:
+      - record: instance:disk_free_ratio
+        expr: |
+          node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|nsfs|fuse.*"}
+            / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|nsfs|fuse.*"}
+
+      - record: instance:cpu_busy_ratio:rate5m
+        expr: 1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m]))
+
+      - record: instance:memory_used_ratio
+        expr: 1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes

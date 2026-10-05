@@ -1,0 +1,77 @@
+# Darviq-Observability: the whole monitoring stack as code.
+#
+#   docker compose up -d        Grafana http://localhost:3000 (admin / see GRAFANA_ADMIN_PASSWORD)
+#                               Prometheus http://localhost:9091, Alertmanager http://localhost:9094
+#
+# Ports are offset from the defaults (9091, 9094) so this stack can run next to an application's
+# own Prometheus (Darviq-Buzz ships one on 9090/9093). Applications are reached through the host
+# (host.docker.internal), so nothing here depends on how they are deployed.
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle          # POST /-/reload after editing rules or targets
+    ports: ["9091:9090"]
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    extra_hosts: ["host.docker.internal:host-gateway"]
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    restart: unless-stopped
+    command: [--config.file=/etc/alertmanager/alertmanager.yml]
+    ports: ["9094:9093"]
+    volumes: ["./alertmanager:/etc/alertmanager:ro"]
+
+  # Where alerts land in this stack: a small webhook that logs every notification and lists the
+  # latest ones at http://localhost:9099. Swap or add Slack, email or PagerDuty in alertmanager.yml.
+  alert-receiver:
+    build: ./alert-receiver
+    restart: unless-stopped
+    ports: ["9099:9099"]
+
+  grafana:
+    image: grafana/grafana-oss:11.3.0
+    restart: unless-stopped
+    ports: ["3000:3000"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me-locally}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/platform-overview.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+
+  # Synthetic checks: HTTP probes of public sites and app health endpoints, including TLS
+  # certificate expiry.
+  blackbox:
+    image: prom/blackbox-exporter:v0.25.0
+    restart: unless-stopped
+    command: [--config.file=/etc/blackbox/blackbox.yml]
+    volumes: ["./blackbox:/etc/blackbox:ro"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+
+  # Host metrics (CPU, memory, disk, network) of the machine running Docker.
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    command: [--path.rootfs=/host]
+    pid: host
+    volumes: ["/:/host:ro"]   # Linux servers: add ",rslave" so newly mounted disks show up too
+
+  # Per-container CPU, memory, network and restarts, from the Docker Engine API (see
+  # docker-exporter/exporter.py for why this replaces cAdvisor here).
+  docker-exporter:
+    build: ./docker-exporter
+    restart: unless-stopped
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
+
+volumes:
+  prometheus_data:
+  grafana_data:

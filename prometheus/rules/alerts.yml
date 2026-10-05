@@ -1,0 +1,127 @@
+# Every alert says what is wrong, how bad (severity) and what to look at first (runbook in
+# docs/runbooks.md). Thresholds wait ("for:") long enough to skip a single bad scrape, short
+# enough to page before users notice. Each rule has a unit test in prometheus/tests/.
+groups:
+  - name: availability
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.job }} target {{ $labels.instance }} is down"
+          description: "Prometheus has not been able to scrape {{ $labels.instance }} ({{ $labels.product }}) for over a minute."
+          runbook: docs/runbooks.md#targetdown
+
+      - alert: ProbeFailed
+        expr: probe_success == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.instance }} is not responding"
+          description: "The synthetic HTTP check of {{ $labels.instance }} ({{ $labels.product }}) has failed for 2 minutes."
+          runbook: docs/runbooks.md#probefailed
+
+      - alert: SlowResponse
+        expr: avg_over_time(probe_duration_seconds[5m]) > 2
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.instance }} takes {{ $value | humanizeDuration }} to respond"
+          description: "Synthetic checks of {{ $labels.instance }} have averaged over 2 s for 5 minutes."
+          runbook: docs/runbooks.md#slowresponse
+
+      - alert: TLSCertificateExpiringSoon
+        expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 14
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "TLS certificate for {{ $labels.instance }} expires in {{ $value | humanize }} days"
+          description: "Renew it before it lapses; automatic renewal has probably failed."
+          runbook: docs/runbooks.md#tlscertificateexpiringsoon
+
+  - name: services
+    rules:
+      - alert: HighErrorRate
+        # Only with real traffic: 1 error out of 2 requests at 3 am is not an incident.
+        expr: service:http_error_ratio:rate5m > 0.05 and service:http_requests:rate5m > 0.2
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.service }} is failing {{ $value | humanizePercentage }} of requests"
+          description: "More than 5% of {{ $labels.service }} ({{ $labels.product }}) requests returned 5xx for 5 minutes."
+          runbook: docs/runbooks.md#higherrorrate
+
+      - alert: HighLatencyP95
+        expr: service:http_latency_p95:5m > 0.5 and service:http_requests:rate5m > 0.2
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.service }} p95 latency is {{ $value | humanizeDuration }}"
+          description: "95th-percentile response time of {{ $labels.service }} ({{ $labels.product }}) has been over 500 ms for 10 minutes."
+          runbook: docs/runbooks.md#highlatencyp95
+
+  - name: capacity
+    rules:
+      - alert: DiskSpaceLow
+        expr: instance:disk_free_ratio < 0.15
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} has {{ $value | humanizePercentage }} free"
+          runbook: docs/runbooks.md#diskspacelow
+
+      - alert: DiskSpaceCritical
+        expr: instance:disk_free_ratio < 0.05
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} has {{ $value | humanizePercentage }} free"
+          runbook: docs/runbooks.md#diskspacelow
+
+      # The early warning: at the current write rate, the disk is full within a day. Fires while
+      # there is still plenty of space, which is the point.
+      - alert: DiskWillFillIn24h
+        expr: |
+          predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|nsfs|fuse.*"}[6h], 24 * 3600) < 0
+            and instance:disk_free_ratio < 0.4
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} will fill within 24 hours at the current rate"
+          runbook: docs/runbooks.md#diskwillfillin24h
+
+      - alert: HighCPU
+        expr: instance:cpu_busy_ratio:rate5m > 0.9
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "CPU on {{ $labels.instance }} has been {{ $value | humanizePercentage }} busy for 15 minutes"
+          runbook: docs/runbooks.md#highcpu
+
+      - alert: MemoryPressure
+        expr: instance:memory_used_ratio > 0.9
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.instance }} is using {{ $value | humanizePercentage }} of its memory"
+          runbook: docs/runbooks.md#memorypressure
+
+      - alert: ContainerRestarting
+        expr: changes(container_start_time_seconds{name!=""}[15m]) > 0   # a restart moves the start time
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: "Container {{ $labels.name }} restarted in the last 15 minutes"
+          runbook: docs/runbooks.md#containerrestarting
+
+  - name: monitoring
+    rules:
+      # A watchdog that is always firing. If the on-call receiver stops getting it, the alert
+      # pipeline itself is broken (Prometheus, Alertmanager or the network between them).
+      - alert: Watchdog
+        expr: vector(1)
+        labels: {severity: none}
+        annotations:
+          summary: "Alerting pipeline heartbeat: this alert should always be firing"
+          runbook: docs/runbooks.md#watchdog

@@ -1,0 +1,49 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: darviq-observability
+
+alerting:
+  alertmanagers:
+    - static_configs: [{targets: ["alertmanager:9093"]}]
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  # The monitoring stack watches itself first: if Prometheus can't scrape its own exporters,
+  # nothing else on the dashboards can be trusted.
+  - job_name: monitoring
+    static_configs:
+      - targets: ["prometheus:9090", "alertmanager:9093", "blackbox:9115", "grafana:3000"]
+        labels: {product: monitoring}
+
+  - job_name: node
+    static_configs: [{targets: ["node-exporter:9100"], labels: {product: host}}]
+
+  - job_name: containers
+    static_configs: [{targets: ["docker-exporter:9417"], labels: {product: host}}]
+
+  # Application services. Adding a product to monitoring = adding a JSON file to targets/apps/;
+  # Prometheus picks it up within a minute, no restart. Each file sets the product label.
+  - job_name: apps
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/apps/*.json"]
+        refresh_interval: 1m
+
+  # Synthetic HTTP checks through the blackbox exporter. Targets (and their product label) live
+  # in targets/probes/*.json, the same way.
+  - job_name: probes
+    metrics_path: /probe
+    params: {module: [http_2xx]}
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/probes/*.json"]
+        refresh_interval: 1m
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115

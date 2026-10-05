@@ -1,0 +1,11 @@
+[
+  {
+    "targets": [
+      "host.docker.internal:5000", "host.docker.internal:5001", "host.docker.internal:5002",
+      "host.docker.internal:5003", "host.docker.internal:5004", "host.docker.internal:5005",
+      "host.docker.internal:5006", "host.docker.internal:5007", "host.docker.internal:5008",
+      "host.docker.internal:5009", "host.docker.internal:8000"
+    ],
+    "labels": {"product": "darviq-buzz", "env": "local"}
+  }
+]

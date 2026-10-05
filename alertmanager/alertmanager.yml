@@ -1,0 +1,26 @@
+# Routing: everything goes to the on-call webhook; critical alerts repeat every hour until fixed,
+# warnings every 12 hours. Group by alert and product so one outage is one notification, not 11.
+# To page a person, add a receiver here (Slack, email, PagerDuty, Opsgenie) next to "oncall".
+route:
+  receiver: oncall
+  group_by: [alertname, product]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 12h
+  routes:
+    - matchers: [severity="critical"]
+      receiver: oncall
+      group_wait: 10s
+      repeat_interval: 1h
+
+# While a whole product is down, don't also send its individual symptom alerts.
+inhibit_rules:
+  - source_matchers: [alertname="ProbeFailed"]
+    target_matchers: [alertname=~"HighErrorRate|HighLatencyP95"]
+    equal: [product]
+
+receivers:
+  - name: oncall
+    webhook_configs:
+      - url: http://alert-receiver:9099/alert
+        send_resolved: true

@@ -1,0 +1,6 @@
+[
+  {
+    "targets": ["https://darviq.com/", "https://darviq.com/products.html", "https://darviq.com/contact.html"],
+    "labels": {"product": "darviq-website", "env": "production"}
+  }
+]
