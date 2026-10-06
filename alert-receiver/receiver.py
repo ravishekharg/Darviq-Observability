@@ -4,6 +4,7 @@ here, so one page shows what is wrong regardless of which tool noticed:
   POST /alert     Alertmanager webhook (Prometheus metric alerts and Loki log alerts)
   POST /zabbix    Zabbix webhook media type (zabbix/provision.py sets it up)
   POST /datadog   Datadog webhook integration (payload template in datadog/README.md)
+  POST /splunk    Splunk webhook alert action (splunk/app/default/savedsearches.conf)
 
 Each status change is logged as one JSON line, and the latest 50 are listed at
 http://localhost:9099/. Standard library only. In production this is where Slack, email or
@@ -21,7 +22,8 @@ RECENT = deque(maxlen=50)
 LAST_STATUS = {}
 COLORS = {"critical": "#d64545", "high": "#d64545", "disaster": "#a51d1d", "warning": "#d99a1e",
           "average": "#e07a1f", "info": "#4a7fd6", "none": "#6b7280"}
-SOURCE_COLORS = {"prometheus": "#e6522c", "loki": "#f2c94c", "zabbix": "#d40000", "datadog": "#632ca6"}
+SOURCE_COLORS = {"prometheus": "#e6522c", "loki": "#f2c94c", "zabbix": "#d40000", "datadog": "#632ca6",
+                 "splunk": "#e20082"}
 
 
 def from_alertmanager(body):
@@ -46,7 +48,16 @@ def from_datadog(body):
            str(body.get("priority") or body.get("severity") or "warning").lower(), body.get("summary", ""))
 
 
-PARSERS = {"/alert": from_alertmanager, "/zabbix": from_zabbix, "/datadog": from_datadog}
+def from_splunk(body):
+    # Splunk's webhook carries the search name, the search job id (sid) and the first result row,
+    # where the saved search puts its own severity and summary. Splunk alerts are one-off events
+    # with no "resolved" notice, so each trigger (its own sid) is recorded as firing.
+    result = body.get("result") or {}
+    yield (f"splunk-{body.get('sid')}-{result.get('project', '')}-{result.get('service', '')}", "splunk", "firing",
+           body.get("search_name"), str(result.get("severity", "warning")).lower(), result.get("summary", ""))
+
+
+PARSERS = {"/alert": from_alertmanager, "/zabbix": from_zabbix, "/datadog": from_datadog, "/splunk": from_splunk}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -94,7 +105,7 @@ th{{color:#9aa3bf;font-weight:600;font-size:13px;text-transform:uppercase;letter
 .pill{{color:#fff;border-radius:999px;padding:2px 10px;font-size:13px;font-weight:600}}
 .src{{border:1.5px solid;border-radius:6px;padding:1px 8px;font-size:13px;font-weight:600}}
 .sev{{color:#9aa3bf;font-size:13px}}</style></head><body>
-<h1>On-call notifications</h1><p>From Prometheus, Loki, Zabbix and Datadog. Newest first, refreshes every 10 seconds.</p>
+<h1>On-call notifications</h1><p>From Prometheus, Loki, Zabbix, Datadog and Splunk. Newest first, refreshes every 10 seconds.</p>
 <table><tr><th>Received</th><th>Source</th><th>Status</th><th>Alert</th><th>Summary</th></tr>{rows}</table></body></html>"""
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")

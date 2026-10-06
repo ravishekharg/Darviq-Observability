@@ -96,19 +96,26 @@ Deliberate stops, starts and redeploys don't trigger it.
 
 ## ErrorLogSpike
 
-**Means:** a service has logged more than 20 error-level lines in 5 minutes (from Loki).
+**Means:** a service has logged more than 20 error-level lines in 5 minutes (from Loki, or from
+Splunk as *Darviq - Error log spike*).
 
 1. Grafana → **Logs** → filter to the service and level `error`: one repeated error, or many kinds?
 2. One repeated error usually has a single cause (a dependency down, bad config after a deploy):
    match its first occurrence to the deploy or incident timeline.
+3. In Splunk, the **Darviq logs** dashboard groups identical errors (timestamps and IDs stripped)
+   under *Most frequent errors*.
 
 ## CrashLoopInLogs
 
-**Means:** a service has logged several stack traces or unhandled exceptions in 10 minutes.
+**Means:** a service has logged several stack traces or unhandled exceptions in 10 minutes (from
+Loki, or from Splunk as *Darviq - Crash in logs*).
 
 1. Grafana → **Logs**, search `Traceback` or `exception` for the service: the first stack trace
    is the useful one.
 2. Check **ContainerRestarting** and the service's error ratio: is it actually failing requests?
+3. In Splunk, *Exceptions behind the stack traces* names the exception at the end of each trace
+   (for example `cassandra.cluster.NoHostAvailable`: the database is unreachable), which the
+   "Traceback" line itself doesn't say.
 
 ## Watchdog
 

@@ -1,0 +1,5 @@
+# Share the app's field extraction, searches and dashboard with every app and user, so the
+# level field also works from Splunk's main Search page.
+[]
+access = read : [ * ], write : [ admin ]
+export = system

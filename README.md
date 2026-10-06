@@ -6,6 +6,7 @@ Automated monitoring for cloud workloads, entirely as code, across the tools tea
 - **Grafana Loki + Alloy:** logs from every container, searchable next to the metrics, with log-based alerts
 - **Zabbix:** agent-based monitoring with its own templates, web checks and actions, configured through its API
 - **Datadog:** the agent, monitors, synthetic tests and a dashboard in Terraform, ready for a Datadog account
+- **Splunk Enterprise:** every container's logs through the HTTP Event Collector, with alerts and a dashboard shipped as a Splunk app
 
 Every tool sends its alerts to **one on-call receiver**, so it doesn't matter which one noticed.
 Alert rules have unit tests, every alert links to a runbook, and CI checks all of it on every change.
@@ -31,7 +32,8 @@ of my own; see [What it found](#what-it-found).
 | **Loki + Alloy** (`loki/`, `alloy/`) | running | Alloy discovers every container and ships its logs to Loki, labelled by compose project and service; log levels are detected automatically. Two log alerts: error spikes and stack traces. |
 | **Zabbix 7** (`zabbix/`) | running (profile `zabbix`) | Server, web UI, PostgreSQL and agent 2. `provision.py` sets up the Docker host with Zabbix's Linux and Docker templates (every container discovered automatically), web scenarios with "down" and "slow" triggers, a dashboard, and a webhook action to the on-call receiver. |
 | **Datadog** (`datadog/`) | as code, validated; runs with your API key (profile `datadog`) | Agent with logs, containers, the same Prometheus endpoints (OpenMetrics) and HTTP checks. Terraform for 6 monitors mirroring the Prometheus alerts, synthetic tests of darviq.com from Mumbai and Ireland, a dashboard, and a webhook to the on-call receiver. |
-| **On-call receiver** (`alert-receiver/`) | running | One page for alerts from Prometheus, Loki, Zabbix and Datadog, recording status changes only. Slack, email or PagerDuty plug in next to it. |
+| **Splunk Enterprise 10** (`splunk/`, `alloy/splunk.alloy`) | running (profile `splunk`) | A second Alloy collector sends every container's log lines to Splunk's HTTP Event Collector, with project, service and container as indexed fields. `splunk/app` is a Splunk app kept in the repo: the `darviq_logs` index, log levels worked out at search time (`props.conf`), two scheduled-search alerts mirroring Loki's, and a **Darviq logs** dashboard that groups repeated errors and names the exception behind each stack trace. |
+| **On-call receiver** (`alert-receiver/`) | running | One page for alerts from Prometheus, Loki, Zabbix, Datadog and Splunk, recording status changes only. Slack, email or PagerDuty plug in next to it. |
 | **Runbooks** (`docs/runbooks.md`) | | What each alert means, what to check first, how to fix the usual causes. |
 | **CI** (`scripts/validate.sh`, `.github/workflows/`) | | Prometheus config and rules, rule unit tests, Alertmanager config, runbook links, dashboards match their generator, Loki config, Python syntax, Terraform format and validation. |
 
@@ -59,6 +61,7 @@ alerts, and how to bring their alerts together in one place.
 | CrashLoopInLogs | Loki | a service logs several stack traces in 10 minutes | critical |
 | *site* is down / is slow | Zabbix | a web scenario fails / averages over 2 s while up | high / warning |
 | Docker container stopped with error code, and the rest of Zabbix's templates | Zabbix | per container and host, from the official templates | per template |
+| Darviq - Error log spike / Crash in logs | Splunk | the same conditions as ErrorLogSpike and CrashLoopInLogs, as scheduled searches every minute; one notification per service, then quiet for 30 minutes | warning / critical |
 | Datadog monitors | Datadog | mirrors of TargetDown/ProbeFailed, HighErrorRate, SlowResponse, DiskWillFillIn24h, ContainerRestarting, ErrorLogSpike | |
 
 ## Running it
@@ -67,11 +70,13 @@ alerts, and how to bring their alerts together in one place.
 docker compose up -d                    # Prometheus, Alertmanager, Grafana, Loki, Alloy, exporters
 bash scripts/zabbix-up.sh               # adds Zabbix and configures it through its API
 DD_API_KEY=... docker compose --profile datadog up -d     # adds the Datadog agent
+docker compose --profile splunk up -d   # adds Splunk and its log collector (about 4 GB of memory)
 
 #   Grafana       http://localhost:3000   (admin / GRAFANA_ADMIN_PASSWORD, default change-me-locally)
 #   Zabbix        http://localhost:8081   (Admin / zabbix: Zabbix's default, change it beyond a laptop)
 #   Prometheus    http://localhost:9091      Alertmanager  http://localhost:9094
 #   Loki          http://localhost:3100      On-call page  http://localhost:9099
+#   Splunk        http://localhost:8002   (admin / SPLUNK_PASSWORD, default change-me-locally)
 
 bash scripts/validate.sh                # everything CI checks, in containers
 python grafana/build_dashboards.py      # after editing a dashboard
@@ -81,6 +86,12 @@ curl -X POST localhost:9091/-/reload    # after editing Prometheus rules or targ
 Datadog's monitors, synthetics and dashboard: `cd datadog/terraform && terraform init && terraform apply`
 with `TF_VAR_datadog_api_key` and `TF_VAR_datadog_app_key` set. Datadog's free plan covers host
 and container metrics; log management and synthetic tests are paid features.
+
+Splunk starts on its 60-day Enterprise trial licence, which includes alerting. After that it falls
+back to Splunk Free (500 MB of logs a day, no alerts and no login), so the alerts here need a
+trial, a developer licence or a paid one beyond two months. Splunk's alerts are events, not
+states: they say "this happened" and send no "resolved" notice, so on the on-call page they show
+as firing only.
 
 `node demo/seed-buzz.mjs` creates invented sample accounts and posts in a fresh Buzz, then
 `node demo/traffic.mjs 15` sends 15 minutes of realistic browsing traffic to Darviq-Buzz so the
@@ -100,6 +111,14 @@ the Docker template reported the container stopping (exit code 137) after about 
 its web scenario failed seconds later. Prometheus followed with TargetDown at 80 seconds and
 ProbeFailed at 2 minutes, and Loki had the web server's "connect() failed" lines in red. All of
 it arrived on the one on-call page, and every alert resolved there when the gateway came back.
+
+**The database down, seen by three tools.** With demo traffic running, Buzz's Cassandra was
+stopped. Splunk paged first, after **24 seconds**: its searches run every minute and fire on the
+first match, flagging error spikes and stack traces in five services at once. Loki's
+CrashLoopInLogs followed at 2 min 39 s and Prometheus's HighErrorRate (98% of social-graph
+requests failing) at 5 min 40 s, by design: it waits for 5 minutes of sustained errors. Splunk's
+dashboard named the cause, `cassandra.cluster.NoHostAvailable` behind every stack trace. When
+Cassandra came back the services reconnected by themselves within a few minutes.
 
 ## What it found
 
@@ -121,6 +140,16 @@ Monitoring is only worth it if it tells you things you didn't know:
    the log alert for stack traces fired on itself: Loki logs each rule evaluation including the
    query text, which contains the very words the rule searches for. Loki's own logs are now
    excluded from log alerts.
+6. **Alerts feeding alerts, found while adding Splunk.** The on-call receiver logs every
+   notification with its severity, so a burst of critical alerts read as a burst of critical log
+   lines and raised an error-spike alert about the receiver itself. Loki's rules had the same
+   loop; both tools now leave the receiver (and Loki and Splunk, which log their own search text)
+   out of log alerts. Splunk's very first alert was also false: Alloy logs failed retries as
+   `level=info ... error="connection refused"`, and matching the word "error" made it an error.
+   A level the line states itself now wins over keywords, as it does in Loki.
+7. **Logs can be lost when the destination is down.** While Splunk restarted, Alloy's Splunk
+   sender retried, filled its queue and dropped lines ("sending queue is full"); Loki kept its
+   copy. A disk-backed queue in the collector, or Splunk's own forwarder, closes that gap.
 5. **Tool gotchas worth knowing.** cAdvisor can't see containers on Docker Desktop's containerd
    image store, so a small Docker API exporter replaces it. A brand-new Zabbix database without
    planner statistics ran the template-linking query for minutes at 100% CPU; `ANALYZE` (2 s)
@@ -133,6 +162,9 @@ tests, dashboards and runbooks carry over; Prometheus Operator (`PrometheusRule`
 replaces the file-based targets, the Loki and Datadog Helm charts replace the compose services,
 and Zabbix's Kubernetes templates replace the Docker one. Managed options keep the same rules:
 Amazon Managed Service for Prometheus with Amazon Managed Grafana, Grafana Cloud, or Datadog.
+For Splunk Cloud, point the collector at the cloud HEC endpoint with a token and install
+`splunk/app` there; Splunk's own OpenTelemetry Collector for Kubernetes is the Helm-chart
+equivalent of `splunk.alloy`.
 
 ## Screenshots
 
@@ -142,6 +174,7 @@ Amazon Managed Service for Prometheus with Amazon Managed Grafana, Grafana Cloud
 | ![Zabbix dashboard](docs/screenshots/zabbix-dashboard.jpg) | ![Zabbix problems](docs/screenshots/zabbix-problems.jpg) |
 | ![Uptime](docs/screenshots/uptime.jpg) | ![Hosts and containers](docs/screenshots/hosts.jpg) |
 | ![Alertmanager](docs/screenshots/alertmanager.jpg) | ![On-call notifications](docs/screenshots/oncall.jpg) |
+| ![Splunk: Darviq logs dashboard](docs/screenshots/splunk-dashboard.jpg) | ![On-call page with Splunk alerts](docs/screenshots/oncall-splunk.jpg) |
 
 ## Licence
 

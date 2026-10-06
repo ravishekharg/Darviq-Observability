@@ -26,6 +26,13 @@ python grafana/build_dashboards.py >/dev/null
 git diff --quiet -- grafana/dashboards || { echo "dashboards changed: commit the regenerated JSON"; exit 1; }
 echo "== Loki config"
 docker run --rm -v "$ROOT/loki:/l" grafana/loki:3.2.1 -config.file=/l/loki.yml -verify-config >/dev/null && echo "  valid"
+echo "== Alloy configs (Loki and Splunk collectors)"
+for f in config.alloy splunk.alloy; do
+  docker run --rm -v "$ROOT/alloy:/a" grafana/alloy:v1.20.1 validate --feature.community-components.enabled /a/$f && echo "  $f valid"
+done
+echo "== Splunk app: dashboard XML parses, both alerts page the on-call receiver"
+python -c "import xml.dom.minidom as m; m.parse('splunk/app/default/data/ui/views/darviq_logs.xml')" && echo "  dashboard ok"
+[ "$(grep -c '^action.webhook.param.url = http://alert-receiver:9099/splunk$' splunk/app/default/savedsearches.conf)" = 2 ]   || { echo "every Splunk alert must send to the on-call receiver"; exit 1; }
 echo "== Python (provisioning, receiver, exporter) compiles"
 python -m py_compile zabbix/provision.py alert-receiver/receiver.py docker-exporter/exporter.py grafana/build_dashboards.py && echo "  ok"
 echo "== Datadog Terraform"

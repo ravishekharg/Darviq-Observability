@@ -2,3 +2,6 @@
 __pycache__/
 .terraform/
 *.tfstate*
+# Written by the Splunk UI into the mounted app; the repo keeps only default/
+splunk/app/local/
+splunk/app/metadata/local.meta

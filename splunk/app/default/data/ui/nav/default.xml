@@ -1,0 +1,5 @@
+<nav search_view="search">
+  <view name="darviq_logs" default="true" />
+  <view name="search" />
+  <view name="alerts" />
+</nav>

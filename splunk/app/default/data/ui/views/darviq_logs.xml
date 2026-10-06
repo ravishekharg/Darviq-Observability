@@ -1,0 +1,179 @@
+<form version="1.1" theme="dark">
+  <label>Darviq logs</label>
+  <description>Every container's log lines, from the same Alloy collection as Loki. Levels are worked out from each line (props.conf).</description>
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="range">
+      <label>Time range</label>
+      <default>
+        <earliest>-60m@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="project">
+      <label>Project</label>
+      <choice value="*">All</choice>
+      <default>*</default>
+      <fieldForLabel>project</fieldForLabel>
+      <fieldForValue>project</fieldForValue>
+      <search>
+        <query>| tstats count where index=darviq_logs by project | sort project</query>
+        <earliest>-24h</earliest>
+        <latest>now</latest>
+      </search>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>Log lines</title>
+      <single>
+        <search>
+          <query>index=darviq_logs project="$project$" | stats count</query>
+          <earliest>$range.earliest$</earliest>
+          <latest>$range.latest$</latest>
+        </search>
+        <option name="numberPrecision">0</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Errors and critical lines</title>
+      <single>
+        <search>
+          <query>index=darviq_logs project="$project$" level IN (error, critical) | stats count</query>
+          <earliest>$range.earliest$</earliest>
+          <latest>$range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[0,20]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Services logging</title>
+      <single>
+        <search>
+          <query>index=darviq_logs project="$project$" | stats dc(service)</query>
+          <earliest>$range.earliest$</earliest>
+          <latest>$range.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <title>Alerts fired</title>
+      <single>
+        <search>
+          <query>index=_audit action=alert_fired ss_app=darviq_observability | stats count</query>
+          <earliest>$range.earliest$</earliest>
+          <latest>$range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Log volume by project</title>
+      <chart>
+        <search>
+          <query>index=darviq_logs project="$project$" | timechart count by project</query>
+          <earliest>$range.earliest$</earliest>
+          <latest>$range.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.text">Lines</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Errors by service</title>
+      <chart>
+        <search>
+          <query>index=darviq_logs project="$project$" level IN (error, critical) | timechart count by service</query>
+          <earliest>$range.earliest$</earliest>
+          <latest>$range.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.text">Error lines</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Most frequent errors</title>
+      <table>
+        <search>
+          <query>index=darviq_logs project="$project$" level IN (error, critical) NOT "Traceback (most recent call last)"
+| eval message=substr(_raw, 1, 300)
+| rex field=message mode=sed "s/\x1b\[[0-9;]*m//g"
+| rex field=message mode=sed "s/^\[[^]]*\] *//"
+| rex field=message mode=sed "s/^(ts|t)=[^ ]+ +//"
+| rex field=message mode=sed "s/[0-9a-f]{8,}|[0-9]+/N/g"
+| eval message=substr(message, 1, 140)
+| stats count latest(_time) as last_seen by service message
+| sort - count | head 12
+| eval last_seen=strftime(last_seen, "%H:%M:%S")</query>
+          <earliest>$range.earliest$</earliest>
+          <latest>$range.latest$</latest>
+        </search>
+        <option name="count">12</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Exceptions behind the stack traces</title>
+      <table>
+        <search>
+          <query>index=darviq_logs project="$project$"
+| rex "^(?&lt;exception&gt;(?:[a-z_]\w*\.)+[A-Z]\w*|[A-Z][a-z]\w*(?:Error|Exception)): (?&lt;detail&gt;.{0,90})"
+| where isnotnull(exception)
+| stats count latest(detail) as example by service exception
+| sort - count | head 12</query>
+          <earliest>$range.earliest$</earliest>
+          <latest>$range.latest$</latest>
+        </search>
+        <option name="count">12</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Alerts fired by Splunk</title>
+      <table>
+        <search>
+          <query>index=_audit action=alert_fired ss_app=darviq_observability
+| eval severity=case(severity==5, "critical", severity==3, "warning", true(), severity)
+| table _time ss_name severity
+| rename ss_name as alert</query>
+          <earliest>$range.earliest$</earliest>
+          <latest>$range.latest$</latest>
+        </search>
+        <option name="count">8</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Latest error lines</title>
+      <table>
+        <search>
+          <query>index=darviq_logs project="$project$" level IN (error, critical)
+| table _time service level _raw
+| head 50</query>
+          <earliest>$range.earliest$</earliest>
+          <latest>$range.latest$</latest>
+        </search>
+        <option name="count">8</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+</form>

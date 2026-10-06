@@ -3,9 +3,10 @@
 #   docker compose up -d                      Prometheus, Alertmanager, Grafana, Loki and exporters
 #   docker compose --profile zabbix up -d     ...plus Zabbix (server, web UI, agent 2)
 #   docker compose --profile datadog up -d    ...plus the Datadog agent (needs DD_API_KEY)
+#   docker compose --profile splunk up -d     ...plus Splunk Enterprise and a log collector for it
 #
 #   Grafana http://localhost:3000, Prometheus :9091, Alertmanager :9094, Loki :3100,
-#   Zabbix http://localhost:8081, on-call page http://localhost:9099
+#   Zabbix http://localhost:8081, Splunk http://localhost:8002, on-call page http://localhost:9099
 #
 # Ports are offset from the defaults (9091, 9094) so this stack can run next to an application's
 # own Prometheus (Darviq-Buzz ships one on 9090/9093). Applications are reached through the host
@@ -173,8 +174,47 @@ services:
       - ./datadog/conf.d/http_check.d:/conf.d/http_check.d:ro
     extra_hosts: ["host.docker.internal:host-gateway"]
 
+  # ---- Splunk (profile "splunk"): every container's logs in Splunk Enterprise, with the alerts and
+  # dashboard from splunk/app. Splunk needs about 4 GB of memory; the first start takes a few
+  # minutes. Sign in as admin with SPLUNK_PASSWORD.
+  splunk:
+    profiles: [splunk]
+    image: splunk/splunk:10.6.0.5
+    restart: unless-stopped
+    ports: ["8002:8000"]
+    environment:
+      SPLUNK_START_ARGS: --accept-license
+      SPLUNK_GENERAL_TERMS: --accept-sgt-current-at-splunk-com
+      SPLUNK_PASSWORD: ${SPLUNK_PASSWORD:-change-me-locally}
+      # The HTTP Event Collector token Alloy sends with. The default is for a laptop only; set
+      # your own anywhere else, here and for alloy-splunk.
+      SPLUNK_HEC_TOKEN: ${SPLUNK_HEC_TOKEN:-14672e8a-251d-4850-8b53-72a1345037a2}
+      SPLUNK_HEC_SSL: "false"   # plain HTTP inside the compose network only; the port isn't published
+      TZ: Asia/Kolkata
+    # The app is mounted from the repo, so an edit reaches Splunk with a restart. (Copying it into a
+    # custom image doesn't work: the Splunk image declares /opt/splunk/etc a volume, and Docker
+    # keeps serving the first copy.) Not read-only: Splunk's setup changes the owner of everything
+    # under /opt/splunk and retries until it can. Changes made in the Splunk UI land in
+    # splunk/app/local, which git ignores; the files in default/ are the source of truth.
+    volumes:
+      - ./splunk/app:/opt/splunk/etc/apps/darviq_observability
+      - splunk_var:/opt/splunk/var
+
+  alloy-splunk:
+    profiles: [splunk]
+    image: grafana/alloy:v1.20.1
+    restart: unless-stopped
+    command: [run, /etc/alloy/splunk.alloy, --storage.path=/var/lib/alloy/data, --feature.community-components.enabled]
+    environment:
+      SPLUNK_HEC_TOKEN: ${SPLUNK_HEC_TOKEN:-14672e8a-251d-4850-8b53-72a1345037a2}
+    volumes:
+      - ./alloy/splunk.alloy:/etc/alloy/splunk.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on: [splunk]
+
 volumes:
   prometheus_data:
   grafana_data:
   loki_data:
   zabbix_db:
+  splunk_var:

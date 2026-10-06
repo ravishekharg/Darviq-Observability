@@ -1,0 +1,60 @@
+// Grafana Alloy for the "splunk" profile: the same container log collection as config.alloy,
+// shipped to Splunk's HTTP Event Collector instead of Loki. It runs as its own container so the
+// default stack never tries to reach a Splunk that isn't there.
+//
+// otelcol.exporter.splunkhec is an OpenTelemetry Collector community component, so Alloy runs
+// with --feature.community-components.enabled (see docker-compose.yml).
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "project"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.relabel.containers.output
+  relabel_rules = discovery.relabel.containers.rules
+  forward_to    = [otelcol.receiver.loki.splunk.receiver]
+}
+
+// Converts the Loki-style entries to OpenTelemetry logs; the container, project and service
+// labels become attributes, which the exporter sends to Splunk as indexed fields.
+otelcol.receiver.loki "splunk" {
+  output {
+    logs = [otelcol.processor.batch.splunk.input]
+  }
+}
+
+otelcol.processor.batch "splunk" {
+  output {
+    logs = [otelcol.exporter.splunkhec.local.input]
+  }
+}
+
+otelcol.exporter.splunkhec "local" {
+  client {
+    endpoint = "http://splunk:8088/services/collector"
+  }
+  splunk {
+    token      = sys.env("SPLUNK_HEC_TOKEN")
+    index      = "darviq_logs"
+    source     = "alloy"
+    sourcetype = "docker:container"
+  }
+}
